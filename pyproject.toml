@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "socialcode-backend"
+version = "0.1.0"
+description = "SocialCode backend API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "sqlalchemy",
+  "psycopg2-binary",
+  "alembic",
+  "python-dotenv",
+  "passlib[bcrypt]",
+  "python-jose[cryptography]",
+  "redis",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[tool.setuptools]
+# Explicitly control which top-level packages are part of this project
+packages = [
+  "app",
+  "worker",
+]
