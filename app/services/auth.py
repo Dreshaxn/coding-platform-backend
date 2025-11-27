@@ -1,5 +1,4 @@
 import bcrypt
-import secrets
 import hashlib
 
 def hash_password(password: str) -> str:
@@ -19,11 +18,6 @@ def verify_password(password: str, hashed_password: str) -> bool:
     hashed_bytes = hashed_password.encode('utf-8')
     # Verify
     return bcrypt.checkpw(password_bytes, hashed_bytes)
-    
-
-def create_refresh_token() -> str:
-    """Generate a secure random refresh token"""
-    return secrets.token_urlsafe(64)
 
 
 def hash_refresh_token(token: str) -> str:
