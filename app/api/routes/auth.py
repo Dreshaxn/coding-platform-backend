@@ -6,8 +6,10 @@ from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.auth import UserLogin, Token
-from app.services.auth import hash_password, verify_password
-from app.core.security import create_access_token
+from app.services.auth import hash_password, verify_password, verify_refresh_token
+from app.core.security import create_access_token, create_refresh_token, verify_token
+from app.services.auth import hash_refresh_token
+from app.schemas.auth import RefreshTokenRequest
 
 router = APIRouter()
 
@@ -62,6 +64,7 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     Login user and return JWT token
     """
     # Find user by email or username
+    
     if user_data.email:
         user = db.query(User).filter(User.email == user_data.email).first()
     else:
@@ -92,7 +95,15 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     # Create access token
     access_token = create_access_token(data={"sub": str(user.id)})
     
-    return Token(access_token=access_token, token_type="bearer")
+    # Create and store refresh token
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    refresh_token_hash = hash_refresh_token(refresh_token)
+    
+    # Store refresh token hash in database
+    user.refresh_token_hash = refresh_token_hash
+    db.commit()
+    
+    return Token(access_token=access_token, refresh_token=refresh_token, token_type="bearer")
 
 
 @router.get("/me", response_model=UserResponse)
@@ -101,3 +112,48 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
     Get current authenticated user information
     """
     return current_user
+
+@router.post("/refresh", response_model=Token)
+def refresh_token(data: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """
+    Refresh access token using a valid refresh token
+    """
+    # Step 1: Decode the refresh token
+    payload = verify_token(data.refresh_token)
+
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token"
+        )
+
+    # Step 2: Extract user ID
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token payload"
+        )
+
+    # Step 3: Find the user
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Step 4: Verify the refresh token matches the stored hash
+    if not user.refresh_token_hash or not verify_refresh_token(user.refresh_token_hash, data.refresh_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or revoked refresh token"
+        )
+
+    # Step 5: Generate a new access token
+    new_access_token = create_access_token({"sub": str(user.id)})
+
+    return Token(access_token=new_access_token, refresh_token=data.refresh_token)
+
+
+   

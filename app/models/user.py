@@ -11,3 +11,4 @@ class User(Base):
     hashed_password = Column(String, nullable=False) # Hashed password  
     created_at = Column(DateTime, default=datetime.now) # Created at
     updated_at = Column(DateTime, default=datetime.now) # Updated at
+    refresh_token_hash = Column(String, nullable=True)

@@ -1,4 +1,6 @@
 import bcrypt
+import secrets
+import hashlib
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt"""
@@ -17,3 +19,18 @@ def verify_password(password: str, hashed_password: str) -> bool:
     hashed_bytes = hashed_password.encode('utf-8')
     # Verify
     return bcrypt.checkpw(password_bytes, hashed_bytes)
+    
+
+def create_refresh_token() -> str:
+    """Generate a secure random refresh token"""
+    return secrets.token_urlsafe(64)
+
+
+def hash_refresh_token(token: str) -> str:
+    """Hash the refresh token before storing it"""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def verify_refresh_token(stored_hash: str, provided_token: str) -> bool:
+    """Check if provided refresh token matches stored hash"""
+    return stored_hash == hash_refresh_token(provided_token)
