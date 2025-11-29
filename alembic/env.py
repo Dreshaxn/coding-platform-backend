@@ -4,9 +4,14 @@ from alembic import context
 
 import os
 
-# --- Import Base + ALL MODELS ---
+# --- Import Base ---
 from app.db.base import Base
-from app.models.user import User  # <-- Add every model here (Activity, Problem, etc.)
+
+# --- Import ALL MODELS ---
+# Import from models/__init__.py to ensure all models are registered with Base.metadata
+from app.models import User  # noqa: F401
+# Add other models here as you create them:
+# from app.models import Activity, Problem, Contest, Submission  # noqa: F401
 
 # --- Import settings (loads .env) ---
 from app.core.config import settings

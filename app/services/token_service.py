@@ -1,5 +1,6 @@
 """Authentication service utilities for issuing and refreshing tokens."""
 from http import HTTPStatus
+from pickle import NONE
 from typing import Dict, Optional
 
 from sqlalchemy.exc import IntegrityError
@@ -169,4 +170,37 @@ def _issue_tokens_for_user(db: Session, user: User) -> Dict[str, str]:
         "refresh_token": refresh_token,
         "token_type": "bearer",
     }
-
+def revoke_refresh_token(db: Session, refresh_token: str):
+    """Revoke the refresh token for a user by clearing the stored hash."""
+    payload = verify_token(refresh_token)
+    if payload is None or payload.get("type") != "refresh":
+        raise AuthServiceError(
+            status_code=HTTPStatus.UNAUTHORIZED.value,
+            detail="Invalid refresh token",
+        )
+    
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise AuthServiceError(
+            status_code=HTTPStatus.UNAUTHORIZED.value,
+            detail="Invalid refresh token payload",
+        )
+    
+    try:
+        user_id_int = int(user_id)
+    except (ValueError, TypeError):
+        raise AuthServiceError(
+            status_code=HTTPStatus.UNAUTHORIZED.value,
+            detail="Invalid user ID in refresh token",
+        )
+    
+    user = db.query(User).filter(User.id == user_id_int).first()
+    if not user:
+        raise AuthServiceError(
+            status_code=HTTPStatus.NOT_FOUND.value,
+            detail="User not found",
+        )
+    
+    user.refresh_token_hash = None
+    db.commit()
+    return True

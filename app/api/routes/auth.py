@@ -10,6 +10,7 @@ from app.services.token_service import (
     login_user as login_user_service,
     refresh_access_token as refresh_access_token_service,
     register_user as register_user_service,
+    revoke_refresh_token,
 )
 
 router = APIRouter()
@@ -70,3 +71,15 @@ def refresh_token(data: RefreshTokenRequest, db: Session = Depends(get_db)):
         )
 
     return Token(**tokens)
+
+
+@router.post("/logout")
+def logout(data: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """
+    Logout user and revoke refresh token
+    """
+    try:
+        revoke_refresh_token(db, data.refresh_token)
+        return {"message": "Refresh token revoked"}
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)

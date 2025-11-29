@@ -1,7 +1,4 @@
-# app/db/base.py
-
 from sqlalchemy.orm import declarative_base
 
+# Define Base - NO model imports here to avoid circular imports
 Base = declarative_base()
-
-# Note: Models are imported in alembic/env.py for Alembic to detect them

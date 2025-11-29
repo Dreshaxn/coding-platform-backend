@@ -12,3 +12,14 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.now) # Created at
     updated_at = Column(DateTime, default=datetime.now) # Updated at
     refresh_token_hash = Column(String, nullable=True)
+
+     # --- Profile fields ---
+    bio = Column(String, nullable=True)
+    school = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+    languages = Column(String, nullable=True)  # could be JSON later
+
+    # --- Stats fields ---
+    xp = Column(Integer, default=0)
+    streak = Column(Integer, default=0)
+    problems_solved = Column(Integer, default=0)

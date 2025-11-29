@@ -17,6 +17,13 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
+    bio: str | None = None
+    school: str | None = None
+    avatar_url: str | None = None
+    languages: list[str] | None = None
+    xp: int = 0
+    streak: int = 0
+    problems_solved: int = 0
     is_active: bool
     created_at: datetime
     updated_at: datetime
