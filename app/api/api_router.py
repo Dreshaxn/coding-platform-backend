@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.routes import auth
+from app.api.routes import auth, problem
 
 # Central API router. You can include sub-routers here, e.g.:
 # from app.api.routes import users
@@ -7,3 +7,4 @@ from app.api.routes import auth
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(problem.router, prefix="", tags=["problems"])

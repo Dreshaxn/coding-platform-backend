@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy.orm import relationship
 from app.db.base import Base
 from datetime import datetime
 
@@ -23,3 +24,10 @@ class User(Base):
     xp = Column(Integer, default=0)
     streak = Column(Integer, default=0)
     problems_solved = Column(Integer, default=0)
+
+    # Relationships
+    solved_problems = relationship(
+        "UserSolvedProblem",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )

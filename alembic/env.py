@@ -9,9 +9,13 @@ from app.db.base import Base
 
 # --- Import ALL MODELS ---
 # Import from models/__init__.py to ensure all models are registered with Base.metadata
-from app.models import User  # noqa: F401
-# Add other models here as you create them:
-# from app.models import Activity, Problem, Contest, Submission  # noqa: F401
+from app.models import (  # noqa: F401
+    User,
+    Category,
+    Difficulty,
+    Problem,
+    UserSolvedProblem,
+)
 
 # --- Import settings (loads .env) ---
 from app.core.config import settings
