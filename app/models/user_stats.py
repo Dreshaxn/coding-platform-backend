@@ -41,8 +41,8 @@ class UserStats(Base):
     # Timestamps
     last_submission_at = Column(DateTime, nullable=True)
     last_streak_update = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.now, nullable=False)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="stats")

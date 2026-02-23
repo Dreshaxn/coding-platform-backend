@@ -11,6 +11,7 @@ class ProblemBase(BaseModel):
     description: str
     difficulty_id: int
     category_id: int
+    function_name: str | None = None
 
 
 class CategoryBase(BaseModel):
@@ -63,6 +64,7 @@ class ProblemResponse(ProblemBase):
     category: CategoryResponse
     created_at: datetime
     updated_at: datetime
+    function_name: str | None
 
     class Config:
         from_attributes = True

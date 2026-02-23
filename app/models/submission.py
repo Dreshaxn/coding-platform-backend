@@ -21,9 +21,9 @@ class Submission(Base):
     __tablename__ = "submissions"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    problem_id = Column(Integer, ForeignKey("problems.id"), nullable=False)
-    language_id = Column(Integer, ForeignKey("languages.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), nullable=False, index=True)
+    language_id = Column(Integer, ForeignKey("languages.id"), nullable=False, index=True)
     code = Column(Text, nullable=False)  # The submitted code
     status = Column(Enum(SubmissionStatus), default=SubmissionStatus.PENDING, nullable=False)
     

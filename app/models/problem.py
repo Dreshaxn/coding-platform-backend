@@ -12,6 +12,12 @@ class Problem(Base):
     description = Column(Text, nullable=False)
     difficulty_id = Column(Integer, ForeignKey("difficulties.id"), nullable=False)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
+
+    # LeetCode-style: method name on the Solution class (e.g. "twoSum").
+    # When set, the judge wraps user code with a driver that calls Solution().method_name(*args).
+    # When NULL, the problem uses plain stdin/stdout execution.
+    function_name = Column(String(100), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -19,6 +25,7 @@ class Problem(Base):
     category = relationship("Category", back_populates="problems")
     difficulty = relationship("Difficulty", back_populates="problems")
     test_cases = relationship("TestCase", back_populates="problem", cascade="all, delete-orphan")
+    templates = relationship("ProblemTemplate", back_populates="problem", cascade="all, delete-orphan")
     submissions = relationship("Submission", back_populates="problem")
     solved_users = relationship(
         "UserSolvedProblem",
