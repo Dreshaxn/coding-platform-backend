@@ -28,6 +28,7 @@ from .config import (
     DEFAULT_LIMITS,
     get_language,
 )
+from .drivers import generate_driver
 from .scripts import read_script
 
 
@@ -58,6 +59,28 @@ class ExecutionResult:
         return self.passed_count == self.total_count
 
 
+def _outputs_match(actual: str, expected: str) -> bool:
+    """
+    Compare actual vs expected output, trying JSON-normalized comparison first.
+    
+    For LeetCode-style problems the driver prints json.dumps(result), so
+    [0, 1] and [0,1] should be considered equal. For plain stdin/stdout
+    problems we fall back to exact string comparison.
+    """
+    actual = actual.strip()
+    expected = expected.strip()
+    
+    # Fast path: exact match
+    if actual == expected:
+        return True
+    
+    # Try JSON comparison (handles whitespace differences in JSON output)
+    try:
+        return json.loads(actual) == json.loads(expected)
+    except (json.JSONDecodeError, ValueError):
+        return False
+
+
 class DockerExecutor:
     """
     Executes user code inside Docker containers with security constraints.
@@ -80,16 +103,20 @@ class DockerExecutor:
         language_slug: str,
         test_inputs: List[str],
         expected_outputs: List[str],
+        function_name: Optional[str] = None,
     ) -> ExecutionResult:
         """
         Execute code against test cases and return results.
         
         This is the main entry point. It handles:
         1. Language validation
-        2. Writing code to a temp directory
+        2. Writing code to a temp directory (with driver stub for LeetCode-style problems)
         3. Compilation (if needed)
         4. Running tests with the appropriate strategy
         5. Collecting and returning results
+        
+        When function_name is provided, appends a driver stub that instantiates
+        Solution() and calls the named method with JSON-parsed stdin args.
         """
         language = get_language(language_slug)
         if not language:
@@ -103,7 +130,7 @@ class DockerExecutor:
         
         # Use a temp directory that's cleaned up automatically
         with tempfile.TemporaryDirectory(prefix="judge_") as work_dir:
-            self._write_solution(work_dir, language, code)
+            self._write_solution(work_dir, language, code, function_name)
             
             # Compiled languages need an extra step
             if language.needs_compilation:
@@ -166,7 +193,7 @@ class DockerExecutor:
         
         return [
             "docker", "run", "--rm", "-i",
-            "--network", "none",                    # No network = no cheating
+            "--network", "none",                    # No network access
             "--cpus", self.limits.cpu_limit,
             "--memory", self.limits.memory_limit,
             "--memory-swap", self.limits.memory_swap,
@@ -368,7 +395,7 @@ class DockerExecutor:
             # Determine verdict based on exit code and output comparison
             if proc.returncode != 0:
                 status = ExecutionStatus.RUNTIME_ERROR
-            elif stdout == expected_output.strip():
+            elif _outputs_match(stdout, expected_output):
                 status = ExecutionStatus.SUCCESS
             else:
                 status = ExecutionStatus.WRONG_ANSWER
@@ -413,7 +440,7 @@ class DockerExecutor:
                 status = ExecutionStatus.TIME_LIMIT_EXCEEDED
             elif exit_code != 0:
                 status = ExecutionStatus.RUNTIME_ERROR
-            elif index < len(expected_outputs) and stdout == expected_outputs[index].strip():
+            elif index < len(expected_outputs) and _outputs_match(stdout, expected_outputs[index]):
                 status = ExecutionStatus.SUCCESS
             elif index < len(expected_outputs):
                 status = ExecutionStatus.WRONG_ANSWER
@@ -499,16 +526,27 @@ class DockerExecutor:
         work_dir: str,
         language: LanguageConfig,
         code: str,
+        function_name: Optional[str] = None,
     ) -> None:
-        """Write user's source code to the working directory."""
+        """
+        Write user's source code to the working directory.
+        
+        For LeetCode-style problems (function_name is set), appends a driver
+        stub that handles JSON I/O and calls Solution().method(*args).
+        """
         path = os.path.join(work_dir, language.filename)
         with open(path, "w") as f:
             f.write(code)
+            if function_name:
+                driver = generate_driver(language.slug, function_name)
+                if driver:
+                    f.write("\n")
+                    f.write(driver)
     
     def _calculate_total_timeout(self, test_count: int) -> float:
         """Calculate total timeout with buffer for container overhead."""
         calculated = test_count * self.limits.timeout_per_test + 10
-        return max(self.limits.max_total_timeout, calculated)
+        return min(self.limits.max_total_timeout, calculated)
 
 
 # =============================================================================
@@ -523,9 +561,12 @@ def run_code(
     language_slug: str,
     test_inputs: List[str],
     expected_outputs: List[str],
+    function_name: Optional[str] = None,
 ) -> ExecutionResult:
     """Execute code against test cases. Main entry point for the judge system."""
-    return _default_executor.execute(code, language_slug, test_inputs, expected_outputs)
+    return _default_executor.execute(
+        code, language_slug, test_inputs, expected_outputs, function_name=function_name
+    )
 
 
 def run_single(code: str, language_slug: str, stdin: str = "") -> TestResult:
