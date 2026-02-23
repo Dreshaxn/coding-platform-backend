@@ -1,6 +1,5 @@
 """Authentication service utilities for issuing and refreshing tokens."""
 from http import HTTPStatus
-from pickle import NONE
 from typing import Dict, Optional
 
 from sqlalchemy.exc import IntegrityError

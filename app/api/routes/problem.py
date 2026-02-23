@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -9,10 +9,12 @@ from app.schemas.problem import (
     ProblemResponse,
     UserSolvedProblemResponse,
 )
+from app.schemas.problem_template import ProblemTemplateResponse
 from app.services.problem_service import (
     ProblemServiceError,
     create_problem as create_problem_service,
     get_problem_by_id,
+    get_problem_template as get_problem_template_service,
     get_problems as get_problems_service,
     get_user_solved_problems,
     solve_problem as solve_problem_service,
@@ -31,6 +33,17 @@ def get_problems(
     Get a list of all problems
     """
     return get_problems_service(db, skip=skip, limit=limit)
+
+
+@router.get("/problems/solved/me", response_model=List[ProblemResponse])
+def get_my_solved_problems(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all problems solved by the current user
+    """
+    return get_user_solved_problems(db, current_user.id)
 
 
 @router.get("/problems/{problem_id}", response_model=ProblemResponse)
@@ -88,13 +101,21 @@ def solve_problem(
         )
 
 
-@router.get("/problems/solved/me", response_model=List[ProblemResponse])
-def get_my_solved_problems(
-    current_user: User = Depends(get_current_user),
+@router.get("/problems/{problem_id}/template", response_model=ProblemTemplateResponse)
+def get_problem_template(
+    problem_id: int,
+    language_id: int = Query(..., description="Language ID to get the boilerplate for"),
     db: Session = Depends(get_db),
 ):
     """
-    Get all problems solved by the current user
+    Get the boilerplate code template for a problem in a specific language.
+    Used by the frontend to show the starter code in the editor.
     """
-    return get_user_solved_problems(db, current_user.id)
-
+    try:
+        return get_problem_template_service(db, problem_id, language_id)
+    except ProblemServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.detail,
+            headers=exc.headers,
+        )

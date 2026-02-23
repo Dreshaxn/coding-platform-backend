@@ -76,10 +76,14 @@ def refresh_token(data: RefreshTokenRequest, db: Session = Depends(get_db)):
 @router.post("/logout")
 def logout(data: RefreshTokenRequest, db: Session = Depends(get_db)):
     """
-    Logout user and revoke refresh token
+    Revoke refresh token
     """
     try:
         revoke_refresh_token(db, data.refresh_token)
-        return {"message": "Refresh token revoked"}
+        return {"success": True}
     except AuthServiceError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.detail,
+            headers=exc.headers,
+        )
