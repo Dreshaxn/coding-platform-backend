@@ -6,8 +6,12 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"  # Algorithm for JWT
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # Token expiration time in minutes
 
+    REDIS_URL: str = "redis://localhost:6379/0"
+    WS_HEARTBEAT_INTERVAL: int = 30
+    CACHE_DEFAULT_TTL: int = 300
+
     class Config:
-        env_file = ".env"  # This tells pydantic to load .env automatically
+        env_file = ".env"
         env_file_encoding = 'utf-8'
 
 settings = Settings()
