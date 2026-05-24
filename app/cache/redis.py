@@ -109,7 +109,7 @@ def publish_status_sync(submission_id: int, payload: dict) -> None:
     r.publish(f"submission:{submission_id}", data)
 
 
-# job queue — LPUSH/BRPOP gives us a simple reliable FIFO without
+# job queue — LPUSH/BRPOP gives a simple reliable FIFO without
 # needing celery or RQ. upgrade to redis streams if you need acks later.
 
 def enqueue_submission(submission_id: int) -> None:

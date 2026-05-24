@@ -61,11 +61,10 @@ class ExecutionResult:
 
 def _outputs_match(actual: str, expected: str) -> bool:
     """
-    Compare actual vs expected output, trying JSON-normalized comparison first.
-    
-    For LeetCode-style problems the driver prints json.dumps(result), so
-    [0, 1] and [0,1] should be considered equal. For plain stdin/stdout
-    problems we fall back to exact string comparison.
+    Compare actual vs expected output with JSON-aware normalization.
+
+    Driver-based execution prints json.dumps(result), so whitespace and
+    formatting differences in JSON should not cause a false mismatch.
     """
     actual = actual.strip()
     expected = expected.strip()
@@ -103,25 +102,29 @@ class DockerExecutor:
         language_slug: str,
         test_inputs: List[str],
         expected_outputs: List[str],
-        function_name: Optional[str] = None,
+        function_name: str,
     ) -> ExecutionResult:
         """
         Execute code against test cases and return results.
         
         This is the main entry point. It handles:
         1. Language validation
-        2. Writing code to a temp directory (with driver stub for LeetCode-style problems)
+        2. Writing code + required driver stub to a temp directory
         3. Compilation (if needed)
         4. Running tests with the appropriate strategy
         5. Collecting and returning results
-        
-        When function_name is provided, appends a driver stub that instantiates
-        Solution() and calls the named method with JSON-parsed stdin args.
         """
         language = get_language(language_slug)
         if not language:
             return self._error_result(
                 f"Unsupported language: {language_slug}",
+                len(test_inputs),
+            )
+
+        driver = generate_driver(language.slug, function_name)
+        if not driver:
+            return self._error_result(
+                f"Language '{language.slug}' does not support driver-based execution",
                 len(test_inputs),
             )
         
@@ -130,7 +133,7 @@ class DockerExecutor:
         
         # Use a temp directory that's cleaned up automatically
         with tempfile.TemporaryDirectory(prefix="judge_") as work_dir:
-            self._write_solution(work_dir, language, code, function_name)
+            self._write_solution(work_dir, language, code, driver)
             
             # Compiled languages need an extra step
             if language.needs_compilation:
@@ -152,26 +155,6 @@ class DockerExecutor:
         
         total_runtime = (time.perf_counter() - start_time) * 1000
         return self._build_result(test_results, total_runtime)
-    
-    def execute_single(
-        self,
-        code: str,
-        language_slug: str,
-        stdin: str = "",
-    ) -> TestResult:
-        """Convenience method for running code with a single input."""
-        result = self.execute(code, language_slug, [stdin], [""])
-        if result.test_results:
-            return result.test_results[0]
-        return TestResult(
-            test_index=0,
-            status=result.status,
-            stdout="",
-            stderr=result.compilation_output or "Execution failed",
-            exit_code=1,
-            runtime_ms=result.total_runtime_ms,
-            memory_kb=0,
-        )
     
     def _build_docker_command(
         self,
@@ -526,22 +509,19 @@ class DockerExecutor:
         work_dir: str,
         language: LanguageConfig,
         code: str,
-        function_name: Optional[str] = None,
+        driver: str,
     ) -> None:
         """
         Write user's source code to the working directory.
-        
-        For LeetCode-style problems (function_name is set), appends a driver
-        stub that handles JSON I/O and calls Solution().method(*args).
+
+        Driver-based execution always appends a stub that handles JSON I/O
+        and calls Solution().method(*args).
         """
         path = os.path.join(work_dir, language.filename)
         with open(path, "w") as f:
             f.write(code)
-            if function_name:
-                driver = generate_driver(language.slug, function_name)
-                if driver:
-                    f.write("\n")
-                    f.write(driver)
+            f.write("\n")
+            f.write(driver)
     
     def _calculate_total_timeout(self, test_count: int) -> float:
         """Calculate total timeout with buffer for container overhead."""
@@ -561,14 +541,9 @@ def run_code(
     language_slug: str,
     test_inputs: List[str],
     expected_outputs: List[str],
-    function_name: Optional[str] = None,
+    function_name: str,
 ) -> ExecutionResult:
     """Execute code against test cases. Main entry point for the judge system."""
     return _default_executor.execute(
         code, language_slug, test_inputs, expected_outputs, function_name=function_name
     )
-
-
-def run_single(code: str, language_slug: str, stdin: str = "") -> TestResult:
-    """Execute code with a single input. Useful for "Run" button functionality."""
-    return _default_executor.execute_single(code, language_slug, stdin)

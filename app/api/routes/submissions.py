@@ -5,10 +5,9 @@ from typing import List
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from app.schemas.submission import SubmissionCreate, SubmissionResponse
-from app.cache.redis import enqueue_submission
 from app.services.submission_service import (
     SubmissionServiceError,
-    create_submission,
+    create_and_queue_submission,
     get_submission as get_submission_service,
     get_user_submissions as get_user_submissions_service,
 )
@@ -23,10 +22,7 @@ def submit_code(
     db: Session = Depends(get_db),
 ):
     try:
-        submission, _ = create_submission(db, current_user.id, submission_data)
-        # push onto redis queue — the judge worker picks it up via BRPOP
-        enqueue_submission(submission.id)
-        return submission
+        return create_and_queue_submission(db, current_user.id, submission_data)
     except SubmissionServiceError as exc:
         raise HTTPException(
             status_code=exc.status_code,

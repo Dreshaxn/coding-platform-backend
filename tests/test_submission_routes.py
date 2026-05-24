@@ -3,18 +3,17 @@ Integration-ish tests for the submissions API.
 
 Goal: verify that a user can submit code and the system:
 1) persists the submission in the DB
-2) runs judging in the background
-3) stores pass/fail + per-test results
-
-We stub the Docker executor (`run_code`) so tests don't require Docker.
+2) enqueues it for async judging
+3) returns/fetches submission state without depending on worker execution
 """
 
 from __future__ import annotations
 
-from typing import Generator, Callable
+from typing import Generator
 
 import pytest
 from fastapi.testclient import TestClient
+from redis.exceptions import RedisError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
@@ -30,11 +29,8 @@ from app.models.category import Category
 from app.models.difficulty import Difficulty
 from app.models.problem import Problem
 from app.models.language import Language
-from app.models.test_case import TestCase as TestCaseModel
+from app.models.test_case import TestCase as ProblemCaseModel
 from app.models.submission import Submission, SubmissionStatus
-
-from worker.config import ExecutionStatus
-from worker.executor import ExecutionResult, TestResult as ExecutorTestResult
 
 
 @pytest.fixture
@@ -97,10 +93,12 @@ def client(db: Session, TestingSessionLocal, monkeypatch) -> Generator[TestClien
     fastapi_app.dependency_overrides[get_db] = _get_db_override
     fastapi_app.dependency_overrides[get_current_user] = lambda: user
 
-    # Background judging uses a module-level SessionLocal imported in the route module.
+    # Older route versions used a module-level SessionLocal for background tasks.
+    # Keep this conditional for compatibility across refactors.
     import app.api.routes.submissions as submissions_routes
 
-    monkeypatch.setattr(submissions_routes, "SessionLocal", TestingSessionLocal, raising=True)
+    if hasattr(submissions_routes, "SessionLocal"):
+        monkeypatch.setattr(submissions_routes, "SessionLocal", TestingSessionLocal, raising=True)
 
     with TestClient(fastapi_app) as c:
         yield c
@@ -125,9 +123,10 @@ def _seed_problem_language_and_tests(
     problem = Problem(
         id=1,
         title="Echo",
-        description="Return input",
+        description="Return argument",
         difficulty_id=1,
         category_id=1,
+        function_name="echo",
     )
     language = Language(
         id=language_id,
@@ -141,19 +140,19 @@ def _seed_problem_language_and_tests(
         is_active=True,
     )
     # One visible test, one hidden test
-    tc1 = TestCaseModel(
+    tc1 = ProblemCaseModel(
         id=1,
         problem_id=1,
-        input="hello\n",
-        expected_output="hello",
+        input="\"hello\"",
+        expected_output="\"hello\"",
         is_hidden=False,
         order=1,
     )
-    tc2 = TestCaseModel(
+    tc2 = ProblemCaseModel(
         id=2,
         problem_id=1,
-        input="secret\n",
-        expected_output="secret",
+        input="\"secret\"",
+        expected_output="\"secret\"",
         is_hidden=True,
         order=2,
     )
@@ -162,155 +161,90 @@ def _seed_problem_language_and_tests(
     db.commit()
 
 
-def _stub_run_code_success(*args, **kwargs) -> ExecutionResult:
-    """Fake executor output: all tests pass."""
-    tests = [
-        ExecutorTestResult(
-            test_index=0,
-            status=ExecutionStatus.SUCCESS,
-            stdout="hello",
-            stderr="",
-            exit_code=0,
-            runtime_ms=5.0,
-            memory_kb=123.0,
-        ),
-        ExecutorTestResult(
-            test_index=1,
-            status=ExecutionStatus.SUCCESS,
-            stdout="secret",
-            stderr="",
-            exit_code=0,
-            runtime_ms=6.0,
-            memory_kb=124.0,
-        ),
-    ]
-    return ExecutionResult(
-        status=ExecutionStatus.SUCCESS,
-        test_results=tests,
-        compilation_output=None,
-        total_runtime_ms=15.0,
-        passed_count=2,
-        total_count=2,
-    )
-
-
-def _stub_run_code_wrong_answer(*args, **kwargs) -> ExecutionResult:
-    """Fake executor output: first test fails, second passes."""
-    tests = [
-        ExecutorTestResult(
-            test_index=0,
-            status=ExecutionStatus.WRONG_ANSWER,
-            stdout="nope",
-            stderr="",
-            exit_code=0,
-            runtime_ms=5.0,
-            memory_kb=123.0,
-        ),
-        ExecutorTestResult(
-            test_index=1,
-            status=ExecutionStatus.SUCCESS,
-            stdout="secret",
-            stderr="",
-            exit_code=0,
-            runtime_ms=6.0,
-            memory_kb=124.0,
-        ),
-    ]
-    return ExecutionResult(
-        status=ExecutionStatus.WRONG_ANSWER,
-        test_results=tests,
-        compilation_output=None,
-        total_runtime_ms=15.0,
-        passed_count=1,
-        total_count=2,
-    )
-
-
 class TestSubmissionEndpoint:
-    def test_submit_persists_and_judges_in_background(self, client: TestClient, db: Session, monkeypatch):
+    def test_submit_persists_and_enqueues_pending_submission(
+        self, client: TestClient, db: Session, monkeypatch
+    ):
         _seed_problem_language_and_tests(db)
 
-        # Stub out Docker execution
-        import app.services.judge_queue as judge_queue
+        import app.services.submission_service as submission_service
 
-        monkeypatch.setattr(judge_queue, "run_code", _stub_run_code_success, raising=True)
+        queued_submission_ids: list[int] = []
+
+        def _enqueue_mock(submission_id: int) -> None:
+            queued_submission_ids.append(submission_id)
+
+        monkeypatch.setattr(
+            submission_service, "enqueue_submission", _enqueue_mock, raising=True
+        )
 
         payload = {
             "problem_id": 1,
             "language_id": 1,
-            "code": "print(input())",
+            "code": "class Solution:\n    def echo(self, value):\n        return value",
         }
 
-        # Submit code. The API returns the created submission, and the background task
-        # will judge it (using our stub) after the response is sent.
         resp = client.post("/submissions", json=payload, headers={"Authorization": "Bearer mock"})
         assert resp.status_code == 201
         body = resp.json()
         assert body["problem_id"] == 1
         assert body["language_id"] == 1
         assert body["user_id"] == 1
+        assert body["status"] == SubmissionStatus.PENDING.value
+        assert body["passed"] is False
+        assert body["passed_count"] == 0
+        assert body["total_count"] == 2
+        assert body["results"] is None
 
         submission_id = body["id"]
+        assert queued_submission_ids == [submission_id]
 
-        # Verify it was persisted
         stored = db.query(Submission).filter(Submission.id == submission_id).first()
         assert stored is not None
+        assert stored.status == SubmissionStatus.PENDING
 
-        # Fetch the submission again; by now the background task should have updated it.
         resp2 = client.get(f"/submissions/{submission_id}", headers={"Authorization": "Bearer mock"})
         assert resp2.status_code == 200
         updated = resp2.json()
+        assert updated["status"] == SubmissionStatus.PENDING.value
+        assert updated["passed"] is False
 
-        assert updated["status"] == SubmissionStatus.ACCEPTED.value
-        assert updated["passed"] is True
-        assert updated["passed_count"] == 2
-        assert updated["total_count"] == 2
-
-        # Results should exist for each test case
-        results = updated["results"]
-        assert isinstance(results, list)
-        assert len(results) == 2
-
-        # Visible test includes I/O details
-        assert results[0]["is_hidden"] is False
-        assert "input" in results[0]
-        assert "expected_output" in results[0]
-        assert "actual_output" in results[0]
-
-        # Hidden test should not leak details
-        assert results[1]["is_hidden"] is True
-        assert "input" not in results[1]
-        assert "expected_output" not in results[1]
-        assert "actual_output" not in results[1]
-
-    def test_submit_sets_wrong_answer_when_executor_reports_failure(self, client: TestClient, db: Session, monkeypatch):
+    def test_submit_does_not_judge_in_api_process(
+        self, client: TestClient, db: Session, monkeypatch
+    ):
         _seed_problem_language_and_tests(db)
 
+        import app.services.submission_service as submission_service
         import app.services.judge_queue as judge_queue
 
-        monkeypatch.setattr(judge_queue, "run_code", _stub_run_code_wrong_answer, raising=True)
+        monkeypatch.setattr(
+            submission_service, "enqueue_submission", lambda _submission_id: None, raising=True
+        )
+
+        def _run_code_should_not_be_called(*_args, **_kwargs):
+            raise AssertionError("run_code should not be called in API request path")
+
+        monkeypatch.setattr(
+            judge_queue, "run_code", _run_code_should_not_be_called, raising=True
+        )
 
         payload = {
             "problem_id": 1,
             "language_id": 1,
-            "code": "print('nope')",
+            "code": "class Solution:\n    def echo(self, value):\n        return 'nope'",
         }
 
         resp = client.post("/submissions", json=payload, headers={"Authorization": "Bearer mock"})
         assert resp.status_code == 201
-        submission_id = resp.json()["id"]
-
-        resp2 = client.get(f"/submissions/{submission_id}", headers={"Authorization": "Bearer mock"})
-        assert resp2.status_code == 200
-        updated = resp2.json()
-
-        assert updated["status"] == SubmissionStatus.WRONG_ANSWER.value
+        updated = resp.json()
+        assert updated["status"] == SubmissionStatus.PENDING.value
         assert updated["passed"] is False
-        assert updated["passed_count"] == 1
+        assert updated["passed_count"] == 0
         assert updated["total_count"] == 2
+        assert updated["results"] is None
 
-    def test_submit_java_compilation_error_is_stored(self, client: TestClient, db: Session, monkeypatch):
-        # Seed a Java language entry (different from Python)
+    def test_submit_rejects_language_without_driver_support(self, client: TestClient, db: Session):
+        # Seed a Java language entry (driver currently only supports Python)
         _seed_problem_language_and_tests(
             db,
             language_id=2,
@@ -322,40 +256,77 @@ class TestSubmissionEndpoint:
             run_command="java -cp /app Solution",
         )
 
-        # Stub executor to simulate a compilation failure
-        def _stub_java_compile_error(*args, **kwargs) -> ExecutionResult:
-            return ExecutionResult(
-                status=ExecutionStatus.COMPILATION_ERROR,
-                test_results=[],
-                compilation_output="Solution.java:1: error: ';' expected",
-                total_runtime_ms=10.0,
-                passed_count=0,
-                total_count=2,
-            )
-
-        import app.services.judge_queue as judge_queue
-
-        monkeypatch.setattr(judge_queue, "run_code", _stub_java_compile_error, raising=True)
-
         payload = {
             "problem_id": 1,
             "language_id": 2,
-            "code": "public class Solution { public static void main(String[] args) { System.out.println(\"hi\") } }",
+            "code": "class Solution { public Object echo(Object value) { return value; } }",
+        }
+
+        resp = client.post("/submissions", json=payload, headers={"Authorization": "Bearer mock"})
+        assert resp.status_code == 400
+        assert "driver-based execution" in resp.json()["detail"]
+
+    def test_submit_returns_503_when_redis_enqueue_is_unavailable(
+        self, client: TestClient, db: Session, monkeypatch
+    ):
+        _seed_problem_language_and_tests(db)
+
+        import app.services.submission_service as submission_service
+
+        monkeypatch.setattr(
+            submission_service,
+            "enqueue_submission",
+            lambda _submission_id: (_ for _ in ()).throw(RedisError("redis down")),
+            raising=True,
+        )
+
+        payload = {
+            "problem_id": 1,
+            "language_id": 1,
+            "code": "class Solution:\n    def echo(self, value):\n        return value",
+        }
+
+        resp = client.post("/submissions", json=payload, headers={"Authorization": "Bearer mock"})
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "Submission queue unavailable"
+
+        stored = db.query(Submission).first()
+        assert stored is not None
+        assert stored.status == SubmissionStatus.RUNTIME_ERROR
+        assert stored.results == [{"error": "Submission queue unavailable"}]
+
+    def test_submit_succeeds_when_redis_cache_read_write_fails(
+        self, client: TestClient, db: Session, monkeypatch
+    ):
+        _seed_problem_language_and_tests(db)
+
+        import app.services.submission_service as submission_service
+        import app.services.judge_queue as judge_queue
+
+        monkeypatch.setattr(
+            submission_service, "enqueue_submission", lambda _submission_id: None, raising=True
+        )
+        monkeypatch.setattr(
+            judge_queue,
+            "cache_get_sync",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(RedisError("redis cache read down")),
+            raising=True,
+        )
+        monkeypatch.setattr(
+            judge_queue,
+            "cache_set_sync",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(RedisError("redis cache write down")),
+            raising=True,
+        )
+
+        payload = {
+            "problem_id": 1,
+            "language_id": 1,
+            "code": "class Solution:\n    def echo(self, value):\n        return value",
         }
 
         resp = client.post("/submissions", json=payload, headers={"Authorization": "Bearer mock"})
         assert resp.status_code == 201
-        submission_id = resp.json()["id"]
-
-        # Should be updated by background judge with compilation error
-        resp2 = client.get(f"/submissions/{submission_id}", headers={"Authorization": "Bearer mock"})
-        assert resp2.status_code == 200
-        updated = resp2.json()
-
-        assert updated["status"] == SubmissionStatus.COMPILATION_ERROR.value
-        assert updated["passed"] is False
-
-        # Compilation errors are stored at the front of `results`
-        assert isinstance(updated["results"], list)
-        assert updated["results"][0].get("compilation_error")
-
+        body = resp.json()
+        assert body["status"] == SubmissionStatus.PENDING.value
+        assert body["total_count"] == 2

@@ -18,10 +18,11 @@ Usage:
     from worker import run_code, ExecutionStatus
 
     result = run_code(
-        code="print(int(input()) * 2)",
+        code="class Solution:\n    def double(self, x):\n        return x * 2",
         language_slug="python3",
         test_inputs=["5", "10"],
-        expected_outputs=["10", "20"]
+        expected_outputs=["10", "20"],
+        function_name="double",
     )
 
     if result.status == ExecutionStatus.SUCCESS:
@@ -32,7 +33,6 @@ Usage:
 from .executor import (
     DockerExecutor,
     run_code,
-    run_single,
     TestResult,
     ExecutionResult,
 )
@@ -57,7 +57,6 @@ __all__ = [
     # Executor
     "DockerExecutor",
     "run_code",
-    "run_single",
     "TestResult",
     "ExecutionResult",
     # Enums

@@ -6,16 +6,26 @@ to the same problem. Status updates are published via Redis pub/sub so the
 websocket layer can push live progress to the client.
 """
 
+import logging
 from typing import List, Dict, Any, Optional
+
+from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
-from app.models.submission import Submission, SubmissionStatus
-from app.models.problem import Problem
-from app.models.test_case import TestCase
+from app.cache.redis import (
+    cache_delete_sync,
+    cache_get_sync,
+    cache_set_sync,
+    publish_status_sync,
+)
 from app.models.language import Language
-from worker.executor import run_code, ExecutionResult
+from app.models.problem import Problem
+from app.models.submission import Submission, SubmissionStatus
+from app.models.test_case import TestCase
 from worker.config import ExecutionStatus
-from app.cache.redis import cache_get_sync, cache_set_sync, cache_delete_sync, publish_status_sync
+from worker.executor import ExecutionResult, run_code
+
+logger = logging.getLogger(__name__)
 
 # maps execution engine statuses -> submission statuses
 STATUS_MAP: Dict[ExecutionStatus, SubmissionStatus] = {
@@ -38,6 +48,19 @@ TERMINAL_STATUSES = {
 }
 
 
+def _safe_publish_status(submission_id: int, payload: Dict[str, Any]) -> None:
+    """Publish live status best-effort; judging should continue if Redis is unavailable."""
+    try:
+        publish_status_sync(submission_id, payload)
+    except RedisError as exc:
+        logger.warning(
+            "Redis status publish failed submission_id=%s type=%s error=%s",
+            submission_id,
+            payload.get("type", "status"),
+            exc,
+        )
+
+
 def get_test_cases(
     db: Session,
     problem_id: int,
@@ -47,9 +70,13 @@ def get_test_cases(
     cache_key = f"cache:testcases:{problem_id}"
 
     if not force_refresh:
-        cached = cache_get_sync(cache_key)
-        if cached is not None:
-            return cached
+        try:
+            cached = cache_get_sync(cache_key)
+            if cached is not None:
+                return cached
+        except RedisError:
+            # Redis is best-effort for cache reads; continue with DB fallback.
+            pass
 
     test_cases = (
         db.query(TestCase)
@@ -69,7 +96,11 @@ def get_test_cases(
         for tc in test_cases
     ]
 
-    cache_set_sync(cache_key, serialized, ttl=3600)
+    try:
+        cache_set_sync(cache_key, serialized, ttl=3600)
+    except RedisError:
+        # Cache write failure should not block request/worker flow.
+        pass
     return serialized
 
 
@@ -90,10 +121,13 @@ def judge_submission(
     submission.status = SubmissionStatus.RUNNING
     db.commit()
 
-    publish_status_sync(submission.id, {
-        "status": SubmissionStatus.RUNNING.value,
-        "submission_id": submission.id,
-    })
+    _safe_publish_status(
+        submission.id,
+        {
+            "status": SubmissionStatus.RUNNING.value,
+            "submission_id": submission.id,
+        },
+    )
 
     if test_cases is None:
         test_cases = get_test_cases(db, submission.problem_id)
@@ -106,14 +140,21 @@ def judge_submission(
         return _fail_submission(db, submission, "Language not found")
 
     problem = db.query(Problem).filter(Problem.id == submission.problem_id).first()
-    function_name = problem.function_name if problem else None
+    if not problem:
+        return _fail_submission(db, submission, "Problem not found")
+    if not problem.function_name:
+        return _fail_submission(
+            db,
+            submission,
+            "Problem is missing function_name for driver-based execution",
+        )
 
     exec_result = run_code(
         code=submission.code,
         language_slug=language.slug,
         test_inputs=[tc["input"] for tc in test_cases],
         expected_outputs=[tc["expected_output"] for tc in test_cases],
-        function_name=function_name,
+        function_name=problem.function_name,
     )
 
     return _process_results(db, submission, test_cases, exec_result)
@@ -127,13 +168,16 @@ def _accept_submission(db: Session, submission: Submission) -> Submission:
     submission.results = []
     db.commit()
 
-    publish_status_sync(submission.id, {
-        "status": SubmissionStatus.ACCEPTED.value,
-        "submission_id": submission.id,
-        "passed": True,
-        "passed_count": 0,
-        "total_count": 0,
-    })
+    _safe_publish_status(
+        submission.id,
+        {
+            "status": SubmissionStatus.ACCEPTED.value,
+            "submission_id": submission.id,
+            "passed": True,
+            "passed_count": 0,
+            "total_count": 0,
+        },
+    )
 
     return submission
 
@@ -144,12 +188,15 @@ def _fail_submission(db: Session, submission: Submission, error: str) -> Submiss
     submission.results = [{"error": error}]
     db.commit()
 
-    publish_status_sync(submission.id, {
-        "status": SubmissionStatus.RUNTIME_ERROR.value,
-        "submission_id": submission.id,
-        "passed": False,
-        "error": error,
-    })
+    _safe_publish_status(
+        submission.id,
+        {
+            "status": SubmissionStatus.RUNTIME_ERROR.value,
+            "submission_id": submission.id,
+            "passed": False,
+            "error": error,
+        },
+    )
 
     return submission
 
@@ -184,17 +231,20 @@ def _process_results(
         results.append(detail)
 
         # per-test progress so the frontend can show a live test counter
-        publish_status_sync(submission.id, {
-            "type": "test_result",
-            "submission_id": submission.id,
-            "test_index": i,
-            "test_status": test_result.status.value,
-            "runtime_ms": test_result.runtime_ms,
-            "passed_so_far": sum(
-                1 for r in results if r["status"] == ExecutionStatus.SUCCESS.value
-            ),
-            "total_so_far": len(results),
-        })
+        _safe_publish_status(
+            submission.id,
+            {
+                "type": "test_result",
+                "submission_id": submission.id,
+                "test_index": i,
+                "test_status": test_result.status.value,
+                "runtime_ms": test_result.runtime_ms,
+                "passed_so_far": sum(
+                    1 for r in results if r["status"] == ExecutionStatus.SUCCESS.value
+                ),
+                "total_so_far": len(results),
+            },
+        )
 
     submission.status = STATUS_MAP.get(exec_result.status, SubmissionStatus.RUNTIME_ERROR)
     submission.passed = exec_result.status == ExecutionStatus.SUCCESS
@@ -203,20 +253,21 @@ def _process_results(
     submission.results = results
 
     if exec_result.compilation_output:
-        submission.results = [
-            {"compilation_error": exec_result.compilation_output[:2000]}
-        ] + results
+        submission.results = [{"compilation_error": exec_result.compilation_output[:2000]}] + results
 
     db.commit()
     db.refresh(submission)
 
     # publish final verdict
-    publish_status_sync(submission.id, {
-        "status": submission.status.value,
-        "submission_id": submission.id,
-        "passed": submission.passed,
-        "passed_count": submission.passed_count,
-        "total_count": submission.total_count,
-    })
+    _safe_publish_status(
+        submission.id,
+        {
+            "status": submission.status.value,
+            "submission_id": submission.id,
+            "passed": submission.passed,
+            "passed_count": submission.passed_count,
+            "total_count": submission.total_count,
+        },
+    )
 
     return submission

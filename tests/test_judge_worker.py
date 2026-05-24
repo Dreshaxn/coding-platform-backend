@@ -1,7 +1,7 @@
 """
-Integration test for the DB-polling judge worker path.
+Integration test for the Redis-queue judge worker path.
 
-This verifies that a pending submission is picked up by `JudgeWorker.run_once`,
+This verifies that a pending submission is picked up by `JudgeWorker._process`,
 judged through `judge_queue`, and persisted with final status/results.
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Generator
 
 import pytest
+from redis.exceptions import RedisError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -23,7 +24,7 @@ from app.models.difficulty import Difficulty
 from app.models.language import Language
 from app.models.problem import Problem
 from app.models.submission import Submission, SubmissionStatus
-from app.models.test_case import TestCase
+from app.models.test_case import TestCase as ProblemCaseModel
 from app.models.user import User
 
 from worker.config import ExecutionStatus
@@ -69,9 +70,10 @@ def _seed_pending_submission(db: Session) -> Submission:
     problem = Problem(
         id=1,
         title="Echo Worker",
-        description="Echo input",
+        description="Echo argument",
         difficulty_id=1,
         category_id=1,
+        function_name="echo",
     )
     language = Language(
         id=1,
@@ -84,19 +86,19 @@ def _seed_pending_submission(db: Session) -> Submission:
         run_command="python3 /app/solution.py",
         is_active=True,
     )
-    tc1 = TestCase(
+    tc1 = ProblemCaseModel(
         id=1,
         problem_id=1,
-        input="hello\n",
-        expected_output="hello",
+        input="\"hello\"",
+        expected_output="\"hello\"",
         is_hidden=False,
         order=1,
     )
-    tc2 = TestCase(
+    tc2 = ProblemCaseModel(
         id=2,
         problem_id=1,
-        input="secret\n",
-        expected_output="secret",
+        input="\"secret\"",
+        expected_output="\"secret\"",
         is_hidden=True,
         order=2,
     )
@@ -105,7 +107,7 @@ def _seed_pending_submission(db: Session) -> Submission:
         user_id=1,
         problem_id=1,
         language_id=1,
-        code="print(input())",
+        code="class Solution:\n    def echo(self, value):\n        return value",
         status=SubmissionStatus.PENDING,
         passed=False,
         passed_count=0,
@@ -162,9 +164,8 @@ def test_judge_worker_processes_pending_submission(
         judge_worker_module, "SessionLocal", TestingSessionLocal, raising=True
     )
 
-    worker = JudgeWorker(batch_size=5, worker_id="test-worker")
-    processed = worker.run_once()
-    assert processed == 1
+    worker = JudgeWorker(worker_id="test-worker")
+    worker._process(1)
 
     refreshed = db.query(Submission).filter(Submission.id == 1).first()
     assert refreshed is not None
@@ -180,3 +181,33 @@ def test_judge_worker_processes_pending_submission(
     assert "input" in refreshed.results[0]
     assert refreshed.results[1]["is_hidden"] is True
     assert "input" not in refreshed.results[1]
+
+
+def test_judge_worker_persists_results_when_status_publish_fails(
+    db: Session, TestingSessionLocal, monkeypatch
+):
+    _seed_pending_submission(db)
+
+    import app.services.judge_queue as judge_queue
+    import worker.judge_worker as judge_worker_module
+
+    monkeypatch.setattr(judge_queue, "run_code", _stub_run_code_success, raising=True)
+    monkeypatch.setattr(
+        judge_queue,
+        "publish_status_sync",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RedisError("redis publish down")),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        judge_worker_module, "SessionLocal", TestingSessionLocal, raising=True
+    )
+
+    worker = JudgeWorker(worker_id="test-worker")
+    worker._process(1)
+
+    refreshed = db.query(Submission).filter(Submission.id == 1).first()
+    assert refreshed is not None
+    assert refreshed.status == SubmissionStatus.ACCEPTED
+    assert refreshed.passed is True
+    assert refreshed.passed_count == 2
+    assert refreshed.total_count == 2
