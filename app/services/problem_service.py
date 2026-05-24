@@ -1,6 +1,8 @@
 from http import HTTPStatus
+import logging
 from typing import List, Optional
 
+from redis.exceptions import RedisError
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.problem import Problem
@@ -9,7 +11,9 @@ from app.models.category import Category
 from app.models.difficulty import Difficulty
 from app.models.user_solved_problem import UserSolvedProblem
 from app.schemas.problem import ProblemCreate
-from app.cache.redis import cache_get_sync, cache_set_sync, cache_delete_sync
+from app.cache.redis import cache_set_sync
+
+logger = logging.getLogger(__name__)
 
 
 class ProblemServiceError(Exception):
@@ -69,11 +73,25 @@ def get_problem_by_id(db: Session, problem_id: int) -> Problem:
             detail="Problem not found"
         )
 
-    cache_set_sync(cache_key, _problem_to_cache_dict(problem), ttl=300)
+    try:
+        cache_set_sync(cache_key, _problem_to_cache_dict(problem), ttl=300)
+    except RedisError as exc:
+        logger.warning(
+            "Problem cache set failed problem_id=%s error=%s",
+            problem_id,
+            exc,
+        )
     return problem
 
 
 def create_problem(db: Session, problem_data: ProblemCreate) -> Problem:
+    function_name = problem_data.function_name.strip()
+    if not function_name:
+        raise ProblemServiceError(
+            status_code=HTTPStatus.BAD_REQUEST.value,
+            detail="function_name is required",
+        )
+
     category = db.query(Category).filter(Category.id == problem_data.category_id).first()
     if not category:
         raise ProblemServiceError(
@@ -100,7 +118,7 @@ def create_problem(db: Session, problem_data: ProblemCreate) -> Problem:
         description=problem_data.description,
         difficulty_id=problem_data.difficulty_id,
         category_id=problem_data.category_id,
-        function_name=problem_data.function_name,
+        function_name=function_name,
     )
 
     db.add(new_problem)
