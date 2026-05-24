@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 # ============================================================================
@@ -11,7 +11,7 @@ class ProblemBase(BaseModel):
     description: str
     difficulty_id: int
     category_id: int
-    function_name: str | None = None
+    function_name: str
 
 
 class CategoryBase(BaseModel):
@@ -47,15 +47,13 @@ class DifficultyCreate(DifficultyBase):
 class DifficultyResponse(DifficultyBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CategoryResponse(CategoryBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProblemResponse(ProblemBase):
@@ -64,10 +62,9 @@ class ProblemResponse(ProblemBase):
     category: CategoryResponse
     created_at: datetime
     updated_at: datetime
-    function_name: str | None
+    function_name: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserSolvedProblemResponse(BaseModel):
@@ -76,6 +73,4 @@ class UserSolvedProblemResponse(BaseModel):
     problem_id: int
     solved_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)

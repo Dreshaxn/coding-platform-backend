@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, model_validator
 
 
 class UserLogin(BaseModel):
@@ -8,13 +8,12 @@ class UserLogin(BaseModel):
     password: str
 
     @model_validator(mode='after')
-    def validate_email_or_username(self):
+    def validate_email_or_username(self): # email takes precedence over username
         if not self.email and not self.username:
             raise ValueError('Either email or username must be provided')
         return self
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Token(BaseModel):

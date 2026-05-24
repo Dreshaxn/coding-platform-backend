@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, JSON, Enum
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from datetime import datetime
+from app.utils.datetime import utcnow_naive
 import enum
 
 
@@ -34,7 +34,7 @@ class Submission(Base):
     results = Column(JSON, nullable=True)  # Detailed test case results
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
     # Relationships
     problem = relationship("Problem", back_populates="submissions")

@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 # ============================================================================
@@ -38,8 +38,7 @@ class UserStatsResponse(BaseModel):
     last_submission_at: datetime | None = None
     last_streak_update: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserStatsPublicResponse(BaseModel):
@@ -55,8 +54,7 @@ class UserStatsPublicResponse(BaseModel):
     global_percentile: float | None = None
     contests_participated: int = 0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserStatsSummary(BaseModel):
@@ -66,8 +64,6 @@ class UserStatsSummary(BaseModel):
     problems_solved: int = 0
     global_rank: int | None = None
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 
 

@@ -99,7 +99,8 @@ class TestCreateProblem:
             title="New Problem",
             description="A new problem",
             difficulty_id=1,
-            category_id=1
+            category_id=1,
+            function_name="newProblem",
         )
         
         # Mock category query
@@ -148,7 +149,8 @@ class TestCreateProblem:
             title="New Problem",
             description="A new problem",
             difficulty_id=1,
-            category_id=999
+            category_id=999,
+            function_name="newProblem",
         )
         
         category_query = MagicMock()
@@ -169,7 +171,8 @@ class TestCreateProblem:
             title="New Problem",
             description="A new problem",
             difficulty_id=999,
-            category_id=1
+            category_id=1,
+            function_name="newProblem",
         )
         
         def query_side_effect(model):
@@ -198,7 +201,8 @@ class TestCreateProblem:
             title="Existing Problem",
             description="A problem",
             difficulty_id=1,
-            category_id=1
+            category_id=1,
+            function_name="existingProblem",
         )
         
         existing_problem = Problem(id=1, title="Existing Problem")
@@ -337,4 +341,3 @@ class TestGetUserSolvedProblems:
         result = get_user_solved_problems(mock_db, user_id=1)
         
         assert len(result) == 0
-

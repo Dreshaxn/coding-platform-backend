@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, Text, ForeignKey, UniqueConstraint, DateTime
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from datetime import datetime
+from app.utils.datetime import utcnow_naive
 
 
 class ProblemTemplate(Base):
@@ -24,8 +24,8 @@ class ProblemTemplate(Base):
     language_id = Column(Integer, ForeignKey("languages.id", ondelete="CASCADE"), nullable=False, index=True)
     boilerplate_code = Column(Text, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
     # Relationships
     problem = relationship("Problem", back_populates="templates")

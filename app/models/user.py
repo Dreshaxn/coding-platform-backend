@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from datetime import datetime
+from app.utils.datetime import utcnow_naive
 
 
 class User(Base):
@@ -12,8 +12,8 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     is_active = Column(Boolean, default=True)
     hashed_password = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
     refresh_token_hash = Column(String, nullable=True)
 
     # --- Profile fields ---

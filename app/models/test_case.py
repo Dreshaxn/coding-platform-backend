@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, Text, Boolean, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from datetime import datetime
+from app.utils.datetime import utcnow_naive
 
 
 class TestCase(Base):
@@ -25,9 +25,8 @@ class TestCase(Base):
     order = Column(Integer, default=0, nullable=False)
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
     # Relationships
     problem = relationship("Problem", back_populates="test_cases")
-

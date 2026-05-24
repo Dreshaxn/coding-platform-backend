@@ -122,7 +122,8 @@ class TestCreateProblem:
             "title": "New Problem",
             "description": "A new problem",
             "difficulty_id": 1,
-            "category_id": 1
+            "category_id": 1,
+            "function_name": "newProblem",
         }
         
         response = client.post("/problems", json=problem_data)
@@ -144,7 +145,8 @@ class TestCreateProblem:
             "title": "Existing Problem",
             "description": "A problem",
             "difficulty_id": 1,
-            "category_id": 1
+            "category_id": 1,
+            "function_name": "existingProblem",
         }
         
         response = client.post("/problems", json=problem_data)
@@ -164,7 +166,8 @@ class TestCreateProblem:
             "title": "New Problem",
             "description": "A problem",
             "difficulty_id": 1,
-            "category_id": 999
+            "category_id": 999,
+            "function_name": "newProblem",
         }
         
         response = client.post("/problems", json=problem_data)
@@ -276,4 +279,3 @@ class TestGetMySolvedProblems:
         
         # FastAPI returns 403 for missing auth
         assert response.status_code in [status.HTTP_403_FORBIDDEN, status.HTTP_401_UNAUTHORIZED]
-

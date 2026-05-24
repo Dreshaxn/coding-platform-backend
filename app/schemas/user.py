@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from datetime import datetime
 from app.schemas.user_stats import UserStatsPublicResponse, UserStatsSummary
 
@@ -13,8 +13,7 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserUpdate(BaseModel):
@@ -24,16 +23,16 @@ class UserUpdate(BaseModel):
     avatar_url: str | None = None
     languages: str | None = None  # Preferred programming languages
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
 # Response Schemas
 # ============================================================================
 
-class UserResponse(BaseModel):
+class UserMeResponse(BaseModel):
     """Full user response with stats (for profile pages)"""
+
     id: int
     email: str
     username: str
@@ -48,9 +47,27 @@ class UserResponse(BaseModel):
     # Stats from UserStats relationship
     stats: UserStatsPublicResponse | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
+
+class UserResponse(BaseModel):
+    """Full user response with stats (for profile pages)"""
+
+    id: int
+    email: str
+    username: str
+    bio: str | None = None
+    school: str | None = None
+    avatar_url: str | None = None
+    languages: str | None = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    # Stats from UserStats relationship
+    stats: UserStatsPublicResponse | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class UserPublicResponse(BaseModel):
     """Public user profile (no email)"""
@@ -65,8 +82,7 @@ class UserPublicResponse(BaseModel):
     # Public stats
     stats: UserStatsPublicResponse | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserListResponse(BaseModel):
@@ -76,23 +92,4 @@ class UserListResponse(BaseModel):
     avatar_url: str | None = None
     stats: UserStatsSummary | None = None
 
-    class Config:
-        from_attributes = True
-
-
-class UserMeResponse(BaseModel):
-    """Current authenticated user response"""
-    id: int
-    email: str
-    username: str
-    bio: str | None = None
-    school: str | None = None
-    avatar_url: str | None = None
-    languages: str | None = None
-    is_active: bool
-    created_at: datetime
-    updated_at: datetime
-    stats: UserStatsPublicResponse | None = None
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

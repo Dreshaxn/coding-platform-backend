@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 # ============================================================================
@@ -42,8 +42,7 @@ class TestCaseResponse(TestCaseBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TestCasePublicResponse(BaseModel):
@@ -53,8 +52,6 @@ class TestCasePublicResponse(BaseModel):
     expected_output: str | None = None  # Only shown for visible test cases
     order: int
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 
 

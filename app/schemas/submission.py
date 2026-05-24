@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.schemas.language import LanguageListResponse
 
 
@@ -27,15 +27,13 @@ class SubmissionResponse(BaseModel):
     results: list[dict[str, Any]] | None = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SubmissionWithLanguageResponse(SubmissionResponse):
     language: LanguageListResponse
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SubmissionListResponse(BaseModel):
@@ -47,8 +45,7 @@ class SubmissionListResponse(BaseModel):
     total_count: int = 0
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SubmissionResultResponse(BaseModel):
@@ -59,5 +56,4 @@ class SubmissionResultResponse(BaseModel):
     total_count: int = 0
     results: list[dict[str, Any]] | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

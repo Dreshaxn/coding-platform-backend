@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from datetime import datetime
+from app.utils.datetime import utcnow_naive
 
 
 class Problem(Base):
@@ -13,13 +13,12 @@ class Problem(Base):
     difficulty_id = Column(Integer, ForeignKey("difficulties.id"), nullable=False)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
 
-    # LeetCode-style: method name on the Solution class (e.g. "twoSum").
-    # When set, the judge wraps user code with a driver that calls Solution().method_name(*args).
-    # When NULL, the problem uses plain stdin/stdout execution.
-    function_name = Column(String(100), nullable=True)
+    # Required method name on the Solution class (e.g. "twoSum").
+    # The judge always wraps user code with a driver that calls Solution().method_name(*args).
+    function_name = Column(String(100), nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
     # Relationships
     category = relationship("Category", back_populates="problems")
@@ -32,4 +31,3 @@ class Problem(Base):
         back_populates="problem",
         cascade="all, delete-orphan"
     )
-

@@ -46,6 +46,7 @@ def sample_problem(sample_category, sample_difficulty):
         description="Find two numbers that add up to target",
         difficulty_id=1,
         category_id=1,
+        function_name="twoSum",
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
@@ -75,4 +76,3 @@ def sample_user_solved_problem(sample_user, sample_problem):
         problem_id=1,
         solved_at=datetime.now()
     )
-
