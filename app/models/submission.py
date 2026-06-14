@@ -40,3 +40,9 @@ class Submission(Base):
     problem = relationship("Problem", back_populates="submissions")
     user = relationship("User", back_populates="submissions")
     language = relationship("Language", back_populates="submissions")
+    race_submission = relationship(
+        "RaceSubmission",
+        back_populates="submission",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

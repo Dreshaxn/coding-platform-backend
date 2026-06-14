@@ -11,6 +11,13 @@ from app.models.test_case import TestCase  # noqa: F401
 from app.models.language import Language  # noqa: F401
 from app.models.submission import Submission, SubmissionStatus  # noqa: F401
 from app.models.user_solved_problem import UserSolvedProblem  # noqa: F401
+from app.models.race import (  # noqa: F401
+    Race,
+    RaceParticipant,
+    RaceParticipantStatus,
+    RaceStatus,
+    RaceSubmission,
+)
 
 __all__ = [
     "User",
@@ -24,4 +31,9 @@ __all__ = [
     "Submission",
     "SubmissionStatus",
     "UserSolvedProblem",
+    "Race",
+    "RaceStatus",
+    "RaceParticipant",
+    "RaceParticipantStatus",
+    "RaceSubmission",
 ]

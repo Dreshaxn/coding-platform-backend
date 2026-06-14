@@ -43,3 +43,14 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+    created_races = relationship(
+        "Race",
+        back_populates="creator",
+        foreign_keys="Race.creator_id",
+        cascade="all, delete-orphan"
+    )
+    race_participations = relationship(
+        "RaceParticipant",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )

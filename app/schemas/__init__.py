@@ -64,6 +64,18 @@ from app.schemas.submission import (
     SubmissionResultResponse,
 )
 
+# Race schemas
+from app.schemas.race import (
+    RaceCreate,
+    RaceResponse,
+    RaceUpdate,
+    RaceParticipantCreate,
+    RaceParticipantResponse,
+    RaceParticipantUpdate,
+    RaceSubmissionCreate,
+    RaceSubmissionResponse,
+)
+
 __all__ = [
     # User
     "UserCreate",
@@ -110,7 +122,15 @@ __all__ = [
     "SubmissionWithLanguageResponse",
     "SubmissionListResponse",
     "SubmissionResultResponse",
+    # Race
+    "RaceCreate",
+    "RaceResponse",
+    "RaceUpdate",
+    "RaceParticipantCreate",
+    "RaceParticipantResponse",
+    "RaceParticipantUpdate",
+    "RaceSubmissionCreate",
+    "RaceSubmissionResponse",
 ]
-
 
 

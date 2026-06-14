@@ -31,4 +31,5 @@ class Language(Base):
     # Relationships
     submissions = relationship("Submission", back_populates="language")
     templates = relationship("ProblemTemplate", back_populates="language")
-
+    race_participants = relationship("RaceParticipant", back_populates="language")
+    race_submissions = relationship("RaceSubmission", back_populates="language")

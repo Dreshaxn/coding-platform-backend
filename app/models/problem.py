@@ -26,6 +26,8 @@ class Problem(Base):
     test_cases = relationship("TestCase", back_populates="problem", cascade="all, delete-orphan")
     templates = relationship("ProblemTemplate", back_populates="problem", cascade="all, delete-orphan")
     submissions = relationship("Submission", back_populates="problem")
+    races = relationship("Race", back_populates="problem", cascade="all, delete-orphan")
+    race_submissions = relationship("RaceSubmission", back_populates="problem")
     solved_users = relationship(
         "UserSolvedProblem",
         back_populates="problem",
