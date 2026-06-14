@@ -3,13 +3,18 @@ import logging
 from typing import List, Optional
 
 from redis.exceptions import RedisError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.models.problem import Problem
 from app.models.problem_template import ProblemTemplate
-from app.models.category import Category
-from app.models.difficulty import Difficulty
 from app.models.user_solved_problem import UserSolvedProblem
+from app.repositories.problem_repository import (
+    CategoryRepository,
+    DifficultyRepository,
+    ProblemRepository,
+    ProblemTemplateRepository,
+    UserSolvedProblemRepository,
+)
 from app.schemas.problem import ProblemCreate
 from app.cache.redis import cache_set_sync
 
@@ -38,16 +43,7 @@ def _problem_to_cache_dict(problem: Problem) -> dict:
 
 
 def get_problems(db: Session, skip: int = 0, limit: int = 100) -> List[Problem]:
-    return (
-        db.query(Problem)
-        .options(
-            joinedload(Problem.category),
-            joinedload(Problem.difficulty)
-        )
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    return ProblemRepository(db).list(skip=skip, limit=limit)
 
 
 def get_problem_by_id(db: Session, problem_id: int) -> Problem:
@@ -57,15 +53,7 @@ def get_problem_by_id(db: Session, problem_id: int) -> Problem:
     other services (like judge_queue) that only need the raw fields.
     """
     cache_key = f"cache:problem:{problem_id}"
-    problem = (
-        db.query(Problem)
-        .options(
-            joinedload(Problem.category),
-            joinedload(Problem.difficulty)
-        )
-        .filter(Problem.id == problem_id)
-        .first()
-    )
+    problem = ProblemRepository(db).get_with_details(problem_id)
 
     if not problem:
         raise ProblemServiceError(
@@ -85,6 +73,7 @@ def get_problem_by_id(db: Session, problem_id: int) -> Problem:
 
 
 def create_problem(db: Session, problem_data: ProblemCreate) -> Problem:
+    problems = ProblemRepository(db)
     function_name = problem_data.function_name.strip()
     if not function_name:
         raise ProblemServiceError(
@@ -92,21 +81,21 @@ def create_problem(db: Session, problem_data: ProblemCreate) -> Problem:
             detail="function_name is required",
         )
 
-    category = db.query(Category).filter(Category.id == problem_data.category_id).first()
+    category = CategoryRepository(db).get(problem_data.category_id)
     if not category:
         raise ProblemServiceError(
             status_code=HTTPStatus.NOT_FOUND.value,
             detail="Category not found"
         )
 
-    difficulty = db.query(Difficulty).filter(Difficulty.id == problem_data.difficulty_id).first()
+    difficulty = DifficultyRepository(db).get(problem_data.difficulty_id)
     if not difficulty:
         raise ProblemServiceError(
             status_code=HTTPStatus.NOT_FOUND.value,
             detail="Difficulty not found"
         )
 
-    existing_problem = db.query(Problem).filter(Problem.title == problem_data.title).first()
+    existing_problem = problems.get_by_title(problem_data.title)
     if existing_problem:
         raise ProblemServiceError(
             status_code=HTTPStatus.BAD_REQUEST.value,
@@ -121,7 +110,7 @@ def create_problem(db: Session, problem_data: ProblemCreate) -> Problem:
         function_name=function_name,
     )
 
-    db.add(new_problem)
+    problems.add(new_problem)
     db.commit()
     db.refresh(new_problem)
 
@@ -129,21 +118,15 @@ def create_problem(db: Session, problem_data: ProblemCreate) -> Problem:
 
 
 def solve_problem(db: Session, problem_id: int, user_id: int) -> UserSolvedProblem:
-    problem = db.query(Problem).filter(Problem.id == problem_id).first()
+    problem = ProblemRepository(db).get(problem_id)
     if not problem:
         raise ProblemServiceError(
             status_code=HTTPStatus.NOT_FOUND.value,
             detail="Problem not found"
         )
 
-    existing_solution = (
-        db.query(UserSolvedProblem)
-        .filter(
-            UserSolvedProblem.user_id == user_id,
-            UserSolvedProblem.problem_id == problem_id
-        )
-        .first()
-    )
+    solved_problems = UserSolvedProblemRepository(db)
+    existing_solution = solved_problems.get(user_id=user_id, problem_id=problem_id)
 
     if existing_solution:
         raise ProblemServiceError(
@@ -156,7 +139,7 @@ def solve_problem(db: Session, problem_id: int, user_id: int) -> UserSolvedProbl
         problem_id=problem_id,
     )
 
-    db.add(new_solution)
+    solved_problems.add(new_solution)
     db.commit()
     db.refresh(new_solution)
 
@@ -164,26 +147,12 @@ def solve_problem(db: Session, problem_id: int, user_id: int) -> UserSolvedProbl
 
 
 def get_user_solved_problems(db: Session, user_id: int) -> List[Problem]:
-    return (
-        db.query(Problem)
-        .join(UserSolvedProblem)
-        .filter(UserSolvedProblem.user_id == user_id)
-        .options(
-            joinedload(Problem.category),
-            joinedload(Problem.difficulty)
-        )
-        .all()
-    )
+    return ProblemRepository(db).list_solved_by_user(user_id)
 
 
 def get_problem_template(db: Session, problem_id: int, language_id: int) -> ProblemTemplate:
-    template = (
-        db.query(ProblemTemplate)
-        .filter(
-            ProblemTemplate.problem_id == problem_id,
-            ProblemTemplate.language_id == language_id,
-        )
-        .first()
+    template = ProblemTemplateRepository(db).get_for_problem_language(
+        problem_id, language_id
     )
     if not template:
         raise ProblemServiceError(

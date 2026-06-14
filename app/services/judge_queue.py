@@ -18,10 +18,10 @@ from app.cache.redis import (
     cache_set_sync,
     publish_status_sync,
 )
-from app.models.language import Language
-from app.models.problem import Problem
 from app.models.submission import Submission, SubmissionStatus
-from app.models.test_case import TestCase
+from app.repositories.language_repository import LanguageRepository
+from app.repositories.problem_repository import ProblemRepository
+from app.repositories.test_case_repository import TestCaseRepository
 from worker.config import ExecutionStatus
 from worker.executor import ExecutionResult, run_code
 
@@ -78,12 +78,7 @@ def get_test_cases(
             # Redis is best-effort for cache reads; continue with DB fallback.
             pass
 
-    test_cases = (
-        db.query(TestCase)
-        .filter(TestCase.problem_id == problem_id)
-        .order_by(TestCase.order)
-        .all()
-    )
+    test_cases = TestCaseRepository(db).list_for_problem(problem_id)
 
     serialized = [
         {
@@ -135,11 +130,11 @@ def judge_submission(
     if not test_cases:
         return _accept_submission(db, submission)
 
-    language = db.query(Language).filter(Language.id == submission.language_id).first()
+    language = LanguageRepository(db).get(submission.language_id)
     if not language:
         return _fail_submission(db, submission, "Language not found")
 
-    problem = db.query(Problem).filter(Problem.id == submission.problem_id).first()
+    problem = ProblemRepository(db).get(submission.problem_id)
     if not problem:
         return _fail_submission(db, submission, "Problem not found")
     if not problem.function_name:

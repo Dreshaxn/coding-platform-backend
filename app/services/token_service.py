@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.repositories.user_repository import UserRepository
 from app.schemas.auth import UserLogin
 from app.schemas.user import UserCreate
 from app.services.auth import (
@@ -81,7 +82,7 @@ def refresh_access_token(db: Session, refresh_token: str) -> Dict[str, str]:
             detail="Invalid refresh token payload",
         )
 
-    user = db.query(User).filter(User.id == int(user_id)).first()
+    user = UserRepository(db).get(int(user_id))
     if not user:
         raise AuthServiceError(
             status_code=HTTPStatus.NOT_FOUND.value,
@@ -108,12 +109,7 @@ def _find_user_by_identifier(
     db: Session, email: Optional[str], username: Optional[str]
 ) -> Optional[User]:
     """Return a user either by email or username."""
-    query = db.query(User)
-    if email:
-        return query.filter(User.email == email).first()
-    if username:
-        return query.filter(User.username == username).first()
-    return None
+    return UserRepository(db).find_by_identifier(email=email, username=username)
 
 
 def register_user(db: Session, user_data: UserCreate) -> User:
@@ -122,7 +118,8 @@ def register_user(db: Session, user_data: UserCreate) -> User:
     Raises AuthServiceError if email or username already exists.
     """
     # Check if email already exists
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    users = UserRepository(db)
+    existing_user = users.get_by_email(user_data.email)
     if existing_user:
         raise AuthServiceError(
             status_code=HTTPStatus.BAD_REQUEST.value,
@@ -130,7 +127,7 @@ def register_user(db: Session, user_data: UserCreate) -> User:
         )
 
     # Check if username already exists
-    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    existing_user = users.get_by_username(user_data.username)
     if existing_user:
         raise AuthServiceError(
             status_code=HTTPStatus.BAD_REQUEST.value,
@@ -146,7 +143,7 @@ def register_user(db: Session, user_data: UserCreate) -> User:
     )
 
     try:
-        db.add(new_user)
+        users.add(new_user)
         db.commit()
         db.refresh(new_user)
         return new_user
@@ -193,7 +190,7 @@ def revoke_refresh_token(db: Session, refresh_token: str):
             detail="Invalid user ID in refresh token",
         )
     
-    user = db.query(User).filter(User.id == user_id_int).first()
+    user = UserRepository(db).get(user_id_int)
     if not user:
         raise AuthServiceError(
             status_code=HTTPStatus.NOT_FOUND.value,
